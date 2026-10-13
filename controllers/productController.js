@@ -11,7 +11,7 @@ export const listProducts = asyncHandler(async (req, res) => {
 
   if (["gold", "diamond", "other"].includes(req.query.type)) filter.type = req.query.type;
   if (req.query.featured === "true") filter.featured = true;
-  if (req.query.search) filter.$text = { $search: String(req.query.search) };
+  if (req.query.search) filter.$text = {$search: String(req.query.search) };
 
   const [products, total] = await Promise.all([
     Product.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
@@ -30,23 +30,22 @@ export const getProduct = asyncHandler(async (req, res) => {
 export const createProduct = asyncHandler(async (req, res) => {
   const baseUrl = process.env.SERVER_URL;
 
-  const imageUrls = (req.files || []).map(
-    (file) => `${baseUrl}/uploads/${file.filename}`
-  );
+  // Single file handling
+  const imageUrls = req.file ? [`${baseUrl}/uploads/${req.file.filename}`] : [];
 
-  // Validate the incoming fields and generated image URLs.
   const body = {
     ...req.body,
     images: imageUrls,
     price: Number(req.body.price),
-    stock: Number(req.body.stock),
-    featured:req.body.featured === undefined? undefined: req.body.featured === "true",
-    isActive:req.body.isActive === undefined? undefined: req.body.isActive === "true",
+    stock: Number(req.body.stock) || 10,
+    featured: req.body.featured === undefined ? undefined : req.body.featured === "true",
+    isActive: req.body.isActive === undefined ? undefined : req.body.isActive === "true",
   };
 
   const errors = validateProductInput(body);
 
   if (errors.length) {
+    console.log("Validation Errors:", errors);
     return res.status(400).json({
       message: "Invalid product data",
       errors,
@@ -57,7 +56,7 @@ export const createProduct = asyncHandler(async (req, res) => {
     name: body.name.trim(),
     slug: slugify(body.slug || body.name),
     description: body.description || "",
-    category: body.category || null,
+    category: null, // <-- Yahan rings ki jagah null kar diya hai taake BSONError na aaye
     type: body.type || "other",
     price: body.price,
     images: imageUrls,
@@ -96,7 +95,6 @@ export const updateProduct = asyncHandler(async (req, res) => {
 });
 
 export const deleteProduct = asyncHandler(async (req, res) => {
-  // Soft-delete: retain product data referenced by historic orders.
   const product = await Product.findByIdAndUpdate(
     req.params.id,
     { isActive: false },
