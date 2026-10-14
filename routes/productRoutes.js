@@ -12,7 +12,10 @@ router.get("/", listProducts);
 router.get("/:id", getProduct);
 
 router.post("/", adminAuth, upload.single("image"), createProduct);
-router.patch("/:id", adminAuth, updateProduct);
+
+router.put("/:id", adminAuth, upload.single("image"), updateProduct);
+router.patch("/:id", adminAuth, upload.single("image"), updateProduct);
+
 router.patch("/:id/stock", adminAuth, changeStock);
 router.delete("/:id", adminAuth, deleteProduct);
 

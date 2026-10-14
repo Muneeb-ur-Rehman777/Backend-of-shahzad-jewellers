@@ -9,7 +9,15 @@ export const listProducts = asyncHandler(async (req, res) => {
   const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 12));
   const filter = { isActive: true };
 
-  if (["gold", "diamond", "other"].includes(req.query.type)) filter.type = req.query.type;
+  if (req.query.category && req.query.category !== 'all') {
+    filter.category = req.query.category.toLowerCase().trim();
+  }
+
+  if (req.query.tag && req.query.tag !== 'All') {
+    const queryTag = req.query.tag.trim();
+    filter.tag = { $regex: new RegExp(`^${queryTag}$`, "i") };
+  }
+
   if (req.query.featured === "true") filter.featured = true;
   if (req.query.search) filter.$text = {$search: String(req.query.search) };
 
@@ -30,7 +38,6 @@ export const getProduct = asyncHandler(async (req, res) => {
 export const createProduct = asyncHandler(async (req, res) => {
   const baseUrl = process.env.SERVER_URL;
 
-  // Single file handling
   const imageUrls = req.file ? [`${baseUrl}/uploads/${req.file.filename}`] : [];
 
   const body = {
@@ -52,15 +59,25 @@ export const createProduct = asyncHandler(async (req, res) => {
     });
   }
 
+  const baseSlug = slugify(body.slug || body.name);
+  const uniqueSlug = `${baseSlug}-${Date.now().toString().slice(-4)}`;
+
+  // Tag aur Type ko synchronize kar rahe hain taake dono jagah theek save ho
+  const selectedTag = body.tag ? body.tag.trim() : "Gold";
+  const selectedType = body.type ? body.type.toLowerCase().trim() : (["gold", "diamond"].includes(selectedTag.toLowerCase()) ? selectedTag.toLowerCase() : "other");
+
   const product = await Product.create({
     name: body.name.trim(),
-    slug: slugify(body.slug || body.name),
+    slug: uniqueSlug,
     description: body.description || "",
-    category: null, // <-- Yahan rings ki jagah null kar diya hai taake BSONError na aaye
-    type: body.type || "other",
+    category: body.category ? body.category.toLowerCase().trim() : "other",
+    type: selectedType,
     price: body.price,
     images: imageUrls,
     stock: body.stock,
+    weight: body.weight || "",
+    purity: body.purity || "22K",
+    tag: selectedTag,
     featured: body.featured ?? false,
     isActive: body.isActive ?? true,
   });
@@ -69,20 +86,49 @@ export const createProduct = asyncHandler(async (req, res) => {
 });
 
 export const updateProduct = asyncHandler(async (req, res) => {
-  const errors = validateProductInput(req.body, { partial: true });
-  if (errors.length) return res.status(400).json({ message: "Invalid product data", errors });
+  const parsedBody = {
+    ...req.body,
+    price: req.body.price !== undefined ? Number(req.body.price) : undefined,
+    stock: req.body.stock !== undefined ? Number(req.body.stock) : undefined,
+    featured: req.body.featured !== undefined ? req.body.featured === "true" || req.body.featured === true : undefined,
+    isActive: req.body.isActive !== undefined ? req.body.isActive === "true" || req.body.isActive === true : undefined,
+  };
 
-  const allowed = ["name", "description", "category", "type", "price", "images", "featured", "isActive"];
+  const errors = validateProductInput(parsedBody, { partial: true });
+  if (errors.length) {
+    console.log("Validation Errors:", errors);
+    return res.status(400).json({ message: "Invalid product data", errors });
+  }
+
+  const allowed = ["name", "description", "category", "type", "price", "images", "featured", "isActive", "weight", "purity", "tag", "stock"];
   const update = {};
 
   for (const key of allowed) {
-    if (req.body[key] !== undefined) update[key] = req.body[key];
+    if (parsedBody[key] !== undefined) {
+      if (key === 'category' && typeof parsedBody[key] === 'string') {
+        update[key] = parsedBody[key].toLowerCase().trim();
+      } else if (key === 'tag' && typeof parsedBody[key] === 'string') {
+        update[key] = parsedBody[key].trim();
+        // Agar tag update ho raha hai toh type ko bhi auto sync kar dein
+        if (["gold", "diamond"].includes(parsedBody[key].toLowerCase().trim())) {
+          update['type'] = parsedBody[key].toLowerCase().trim();
+        }
+      } else {
+        update[key] = parsedBody[key];
+      }
+    }
   }
-  if (req.body.name !== undefined) {
-    update.name = req.body.name.trim();
-    update.slug = slugify(req.body.slug || req.body.name);
-  } else if (req.body.slug !== undefined) {
-    update.slug = slugify(req.body.slug);
+
+  if (req.file) {
+    const baseUrl = process.env.SERVER_URL;
+    update.images = [`${baseUrl}/uploads/${req.file.filename}`];
+  }
+
+  if (parsedBody.name !== undefined) {
+    update.name = parsedBody.name.trim();
+    update.slug = slugify(parsedBody.slug || parsedBody.name) + "-" + Date.now().toString().slice(-4);
+  } else if (parsedBody.slug !== undefined) {
+    update.slug = slugify(parsedBody.slug);
   }
 
   const product = await Product.findByIdAndUpdate(req.params.id, update, {
