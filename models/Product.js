@@ -6,9 +6,11 @@ const productSchema = new mongoose.Schema(
     slug: { type: String, required: true, unique: true, lowercase: true, trim: true },
     description: { type: String, default: "", maxlength: 5000 },
     category: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Category",
-      default: null,
+      type: String,
+      required: true,
+      lowercase: true,
+      trim: true,
+      default: "rings",
     },
     type: {
       type: String,
@@ -16,6 +18,9 @@ const productSchema = new mongoose.Schema(
       default: "other",
       index: true,
     },
+    weight: { type: String, default: "" },
+    purity: { type: String, default: "22K" },
+    tag: { type: String, default: "Gold" },
     price: { type: Number, required: true, min: 0 },
     images: [{ type: String, trim: true }],
     stock: { type: Number, required: true, default: 0, min: 0, validate: Number.isInteger },
@@ -25,6 +30,6 @@ const productSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-productSchema.index({ name: "text", description: "text" });
+productSchema.index({ name: "text", description: "text", category: "text" });
 
 export default mongoose.model("Product", productSchema);
