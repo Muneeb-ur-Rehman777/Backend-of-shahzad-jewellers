@@ -5,6 +5,8 @@ export async function connectDB() {
     throw new Error("MONGODB_URI is missing from environment variables");
   }
 
-  await mongoose.connect(process.env.MONGODB_URI);
+  await mongoose.connect(process.env.MONGODB_URI, {
+    family: 4,
+  });
   console.log("MongoDB connected successfully");
 }
