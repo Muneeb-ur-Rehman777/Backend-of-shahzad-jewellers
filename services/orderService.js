@@ -8,30 +8,29 @@ export async function createGuestOrder(payload) {
     let total = 0;
 
     for (const requestedItem of payload.items) {
-      // Product barbaaduu (Yoo hin argamne error hin darbuu, fallback fayyadamuuf)
-      let product = await Product.findOne({
+
+      const product = await Product.findOne({
         _id: requestedItem.productId,
         isActive: true,
       });
 
-      let unitPrice = requestedItem.unitPrice || 1000;
-      let itemName = requestedItem.name || "Jewellery Item";
-
-      if (product) {
-        unitPrice = product.price;
-        itemName = product.name;
-        if (product.stock >= requestedItem.quantity) {
-          product.stock -= requestedItem.quantity;
-          await product.save();
-        }
+      if (!product || product.stock < requestedItem.quantity) {
+        const error = new Error(
+          `Product ${requestedItem.productId} is unavailable or has insufficient stock`
+        );
+        error.statusCode = 409;
+        throw error;
       }
 
-      const lineTotal = unitPrice * requestedItem.quantity;
+      product.stock -= requestedItem.quantity;
+      await product.save();
+
+      const lineTotal = product.price * requestedItem.quantity;
       total += lineTotal;
       items.push({
-        product: product ? product._id : requestedItem.productId,
-        name: itemName,
-        unitPrice: unitPrice,
+        product: product._id,
+        name: product.name,
+        unitPrice: product.price,
         quantity: requestedItem.quantity,
       });
     }
@@ -48,11 +47,21 @@ export async function createGuestOrder(payload) {
         city: payload.customer.city.trim(),
       },
       items,
-      total: payload.total || total,
+      total,
       notes: payload.notes || "",
     });
 
     try {
+      for (const item of order.items) {
+        const product = await Product.findById(item.product);
+        if (product) {
+          getIO().to("admin-room").emit("stock:updated", {
+            productId: product._id.toString(),
+            stock: product.stock,
+          });
+        }
+      }
+
       getIO().to("admin-room").emit("order:created", {
         orderId: order._id.toString(),
         orderNumber: order.orderNumber,
