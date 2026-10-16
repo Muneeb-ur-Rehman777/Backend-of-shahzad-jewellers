@@ -7,4 +7,5 @@ const router = Router();
 router.post("/login", loginAdmin);
 router.get("/me", adminAuth, getCurrentAdmin);
 
+
 export default router;
