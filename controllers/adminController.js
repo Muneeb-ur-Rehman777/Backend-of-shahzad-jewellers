@@ -11,8 +11,13 @@ export const loginAdmin = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: "Email and password are required" });
   }
 
+  // const admin = await Admin.findOne({ email }).select("+passwordHash");
+  // if (!admin || !admin.isActive) {
+  //   return res.status(401).json({ message: "Invalid email or password" });
+  // }
+
   const admin = await Admin.findOne({ email }).select("+passwordHash");
-  if (!admin || !admin.isActive) {
+  if (!admin) {
     return res.status(401).json({ message: "Invalid email or password" });
   }
 
