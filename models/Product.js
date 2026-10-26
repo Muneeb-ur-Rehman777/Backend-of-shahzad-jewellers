@@ -14,7 +14,16 @@ const productSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["gold", "diamond", "other"],
+      enum: [
+        'Rings',
+        'Necklaces',
+        'Bridal Sets',
+        'Bangles',
+        'Earrings',
+        'Bracelets',
+        'Men Jewelry',
+        'Diamond Jewelry'
+      ],
       default: "other",
       index: true,
     },
