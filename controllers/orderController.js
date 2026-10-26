@@ -21,17 +21,32 @@ export const createOrder = asyncHandler(async (req, res) => {
 
 export const listOrders = asyncHandler(async (req, res) => {
   const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
-  const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
+  const limit = Math.min(100,Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
+
   const filter = {};
 
-  if (req.query.status) filter.status = req.query.status;
+  if (req.query.status) {
+    filter.status = req.query.status;
+  }
 
   const [orders, total] = await Promise.all([
-    Order.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
+    Order.find(filter)
+      .sort({ createdAt: -1, _id: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit),
+
     Order.countDocuments(filter),
   ]);
 
-  res.json({ orders, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
+  res.json({
+    orders,
+    pagination: {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit),
+    },
+  });
 });
 
 export const updateOrderStatus = asyncHandler(async (req, res) => {
