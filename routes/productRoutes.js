@@ -11,10 +11,10 @@ const router = Router();
 router.get("/", listProducts);
 router.get("/:id", getProduct);
 
-router.post("/", adminAuth, upload.single("image"), createProduct);
+router.post("/", adminAuth, upload.array("images", 5), createProduct);
 
-router.put("/:id", adminAuth, upload.single("image"), updateProduct);
-router.patch("/:id", adminAuth, upload.single("image"), updateProduct);
+router.put("/:id", adminAuth, upload.array("images", 5), updateProduct);
+router.patch("/:id", adminAuth, upload.array("images", 5), updateProduct);
 
 router.patch("/:id/stock", adminAuth, changeStock);
 router.delete("/:id", adminAuth, deleteProduct);
