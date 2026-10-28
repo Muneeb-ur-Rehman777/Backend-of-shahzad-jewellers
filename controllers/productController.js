@@ -19,7 +19,7 @@ export const listProducts = asyncHandler(async (req, res) => {
   }
 
   if (req.query.featured === "true") filter.featured = true;
-  if (req.query.search) filter.$text = {$search: String(req.query.search) };
+  if (req.query.search) filter.$text = { $search: String(req.query.search) };
 
   const [products, total] = await Promise.all([
     Product.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
@@ -63,56 +63,75 @@ export const createProduct = asyncHandler(async (req, res) => {
   const uniqueSlug = `${baseSlug}-${Date.now().toString().slice(-4)}`;
 
   // Tag aur Type ko synchronize kar rahe hain taake dono jagah theek save ho
+  
+  
+
   const selectedTag = body.tag ? body.tag.trim() : "Gold";
-  const selectedType = body.type ? body.type.toLowerCase().trim() : (["gold", "diamond"].includes(selectedTag.toLowerCase()) ? selectedTag.toLowerCase() : "other");
+  
+
 
   const product = await Product.create({
     name: body.name.trim(),
     slug: uniqueSlug,
     description: body.description || "",
-    category: body.category ? body.category.toLowerCase().trim() : "other",
-    type: selectedType,
+    category: body.category
+      ? body.category.toLowerCase().trim()
+      : "rings",
     price: body.price,
     images: imageUrls,
     stock: body.stock,
     weight: body.weight || "",
-    purity: body.purity || "22K",
+    purity: body.purity || "22K (916)",
     tag: selectedTag,
     featured: body.featured ?? false,
     isActive: body.isActive ?? true,
   });
+  console.log(product);
 
   res.status(201).json({ product });
 });
 
+
+  
 export const updateProduct = asyncHandler(async (req, res) => {
-  const parsedBody = {
-    ...req.body,
-    price: req.body.price !== undefined ? Number(req.body.price) : undefined,
-    stock: req.body.stock !== undefined ? Number(req.body.stock) : undefined,
-    featured: req.body.featured !== undefined ? req.body.featured === "true" || req.body.featured === true : undefined,
-    isActive: req.body.isActive !== undefined ? req.body.isActive === "true" || req.body.isActive === true : undefined,
+  const parsedBody = {...req.body,
+    price:req.body.price !== undefined? Number(req.body.price): undefined,
+    stock:req.body.stock !== undefined? Number(req.body.stock): undefined,
+    featured:req.body.featured !== undefined? req.body.featured === "true" || req.body.featured === true: undefined,
+    isActive:req.body.isActive !== undefined? req.body.isActive === "true" || req.body.isActive === true: undefined,
   };
 
   const errors = validateProductInput(parsedBody, { partial: true });
+
   if (errors.length) {
     console.log("Validation Errors:", errors);
-    return res.status(400).json({ message: "Invalid product data", errors });
+    return res.status(400).json({
+      message: "Invalid product data",
+      errors,
+    });
   }
 
-  const allowed = ["name", "description", "category", "type", "price", "images", "featured", "isActive", "weight", "purity", "tag", "stock"];
+  const allowed = [
+    "name",
+    "description",
+    "category",
+    "price",
+    "featured",
+    "isActive",
+    "weight",
+    "purity",
+    "tag",
+    "stock",
+  ];
+
   const update = {};
 
   for (const key of allowed) {
     if (parsedBody[key] !== undefined) {
-      if (key === 'category' && typeof parsedBody[key] === 'string') {
+      if (key === "category" && typeof parsedBody[key] === "string") {
         update[key] = parsedBody[key].toLowerCase().trim();
-      } else if (key === 'tag' && typeof parsedBody[key] === 'string') {
+      } else if (key === "tag" && typeof parsedBody[key] === "string") {
         update[key] = parsedBody[key].trim();
-        // Agar tag update ho raha hai toh type ko bhi auto sync kar dein
-        if (["gold", "diamond"].includes(parsedBody[key].toLowerCase().trim())) {
-          update['type'] = parsedBody[key].toLowerCase().trim();
-        }
       } else {
         update[key] = parsedBody[key];
       }
@@ -126,19 +145,30 @@ export const updateProduct = asyncHandler(async (req, res) => {
 
   if (parsedBody.name !== undefined) {
     update.name = parsedBody.name.trim();
-    update.slug = slugify(parsedBody.slug || parsedBody.name) + "-" + Date.now().toString().slice(-4);
+    update.slug =
+      slugify(parsedBody.slug || parsedBody.name) +
+      "-" +
+      Date.now().toString().slice(-4);
   } else if (parsedBody.slug !== undefined) {
     update.slug = slugify(parsedBody.slug);
   }
 
-  const product = await Product.findByIdAndUpdate(req.params.id, update, {
-    new: true,
-    runValidators: true,
-  });
+  const product = await Product.findByIdAndUpdate(
+    req.params.id,
+    update,
+    {
+      new: true,
+      runValidators: true,
+    }
+  );
 
-  if (!product) return res.status(404).json({ message: "Product not found" });
+  if (!product) {
+    return res.status(404).json({ message: "Product not found" });
+  }
+
   res.json({ product });
 });
+
 
 export const deleteProduct = asyncHandler(async (req, res) => {
   const product = await Product.findByIdAndUpdate(

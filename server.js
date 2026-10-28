@@ -15,7 +15,7 @@ async function startServer() {
 
 
   try {
-    await Product.collection.dropIndexes();
+  await Product.collection.dropIndexes();
     console.log("Old product indexes dropped successfully");
   } catch (err) {
     console.log("No indexes to drop or already cleared");
