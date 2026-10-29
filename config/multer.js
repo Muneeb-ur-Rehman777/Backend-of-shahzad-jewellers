@@ -5,7 +5,6 @@ import { randomUUID } from "crypto";
 
 const uploadDir = path.join(process.cwd(), "uploads");
 
-// Create uploads folder if it doesn't exist.
 fs.mkdirSync(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({

@@ -38,7 +38,10 @@ export const getProduct = asyncHandler(async (req, res) => {
 export const createProduct = asyncHandler(async (req, res) => {
   const baseUrl = process.env.SERVER_URL;
 
-  const imageUrls = req.file ? [`${baseUrl}/uploads/${req.file.filename}`] : [];
+  // ⬇️ Multiple images handle karne ke liye array mapping ⬇️
+  const imageUrls = req.files && req.files.length > 0 
+    ? req.files.map(file => `${baseUrl}/uploads/${file.filename}`) 
+    : [];
 
   const body = {
     ...req.body,
@@ -62,13 +65,7 @@ export const createProduct = asyncHandler(async (req, res) => {
   const baseSlug = slugify(body.slug || body.name);
   const uniqueSlug = `${baseSlug}-${Date.now().toString().slice(-4)}`;
 
-  // Tag aur Type ko synchronize kar rahe hain taake dono jagah theek save ho
-  
-  
-
   const selectedTag = body.tag ? body.tag.trim() : "Gold";
-  
-
 
   const product = await Product.create({
     name: body.name.trim(),
@@ -78,7 +75,7 @@ export const createProduct = asyncHandler(async (req, res) => {
       ? body.category.toLowerCase().trim()
       : "rings",
     price: body.price,
-    images: imageUrls,
+    images: imageUrls, // ⬇️ Array save hoga database mein ⬇️
     stock: body.stock,
     weight: body.weight || "",
     purity: body.purity || "22K (916)",
@@ -91,14 +88,13 @@ export const createProduct = asyncHandler(async (req, res) => {
   res.status(201).json({ product });
 });
 
-
-  
 export const updateProduct = asyncHandler(async (req, res) => {
-  const parsedBody = {...req.body,
-    price:req.body.price !== undefined? Number(req.body.price): undefined,
-    stock:req.body.stock !== undefined? Number(req.body.stock): undefined,
-    featured:req.body.featured !== undefined? req.body.featured === "true" || req.body.featured === true: undefined,
-    isActive:req.body.isActive !== undefined? req.body.isActive === "true" || req.body.isActive === true: undefined,
+  const parsedBody = {
+    ...req.body,
+    price: req.body.price !== undefined ? Number(req.body.price) : undefined,
+    stock: req.body.stock !== undefined ? Number(req.body.stock) : undefined,
+    featured: req.body.featured !== undefined ? req.body.featured === "true" || req.body.featured === true : undefined,
+    isActive: req.body.isActive !== undefined ? req.body.isActive === "true" || req.body.isActive === true : undefined,
   };
 
   const errors = validateProductInput(parsedBody, { partial: true });
@@ -138,9 +134,10 @@ export const updateProduct = asyncHandler(async (req, res) => {
     }
   }
 
-  if (req.file) {
+  // ⬇️ Agar nayi multiple images upload hui hain toh update karo ⬇️
+  if (req.files && req.files.length > 0) {
     const baseUrl = process.env.SERVER_URL;
-    update.images = [`${baseUrl}/uploads/${req.file.filename}`];
+    update.images = req.files.map(file => `${baseUrl}/uploads/${file.filename}`);
   }
 
   if (parsedBody.name !== undefined) {
@@ -168,7 +165,6 @@ export const updateProduct = asyncHandler(async (req, res) => {
 
   res.json({ product });
 });
-
 
 export const deleteProduct = asyncHandler(async (req, res) => {
   const product = await Product.findByIdAndUpdate(
