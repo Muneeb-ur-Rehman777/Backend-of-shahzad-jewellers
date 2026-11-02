@@ -3,6 +3,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { slugify } from "../utils/slugify.js";
 import { validateProductInput } from "../validators/productValidator.js";
 import { setProductStock } from "../services/inventoryService.js";
+import { getIO } from "../socket.js";
 
 export const listProducts = asyncHandler(async (req, res) => {
   const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
@@ -38,9 +39,9 @@ export const getProduct = asyncHandler(async (req, res) => {
 export const createProduct = asyncHandler(async (req, res) => {
   const baseUrl = process.env.SERVER_URL;
 
-  // ⬇️ Multiple images handle karne ke liye array mapping ⬇️
-  const imageUrls = req.files && req.files.length > 0 
-    ? req.files.map(file => `${baseUrl}/uploads/${file.filename}`) 
+  // Handle multiple uploaded images.
+  const imageUrls = req.files && req.files.length > 0
+    ? req.files.map(file => `${baseUrl}/uploads/${file.filename}`)
     : [];
 
   const body = {
@@ -75,7 +76,7 @@ export const createProduct = asyncHandler(async (req, res) => {
       ? body.category.toLowerCase().trim()
       : "rings",
     price: body.price,
-    images: imageUrls, // ⬇️ Array save hoga database mein ⬇️
+    images: imageUrls,
     stock: body.stock,
     weight: body.weight || "",
     purity: body.purity || "22K (916)",
@@ -83,18 +84,29 @@ export const createProduct = asyncHandler(async (req, res) => {
     featured: body.featured ?? false,
     isActive: body.isActive ?? true,
   });
-  console.log(product);
+
+
+  // NEW: Notify admin clients about the newly created product.
+  // Send the complete product so the frontend can update its product lists.
+  getIO().to("admin-room").emit("product:created", product.toObject());
 
   res.status(201).json({ product });
 });
+
 
 export const updateProduct = asyncHandler(async (req, res) => {
   const parsedBody = {
     ...req.body,
     price: req.body.price !== undefined ? Number(req.body.price) : undefined,
     stock: req.body.stock !== undefined ? Number(req.body.stock) : undefined,
-    featured: req.body.featured !== undefined ? req.body.featured === "true" || req.body.featured === true : undefined,
-    isActive: req.body.isActive !== undefined ? req.body.isActive === "true" || req.body.isActive === true : undefined,
+    featured:
+      req.body.featured !== undefined
+        ? req.body.featured === "true" || req.body.featured === true
+        : undefined,
+    isActive:
+      req.body.isActive !== undefined
+        ? req.body.isActive === "true" || req.body.isActive === true
+        : undefined,
   };
 
   const errors = validateProductInput(parsedBody, { partial: true });
@@ -117,7 +129,6 @@ export const updateProduct = asyncHandler(async (req, res) => {
     "weight",
     "purity",
     "tag",
-    "stock",
   ];
 
   const update = {};
@@ -134,10 +145,63 @@ export const updateProduct = asyncHandler(async (req, res) => {
     }
   }
 
-  // ⬇️ Agar nayi multiple images upload hui hain toh update karo ⬇️
-  if (req.files && req.files.length > 0) {
+  // CHANGED 1: Handle existing images that the user wants to keep.
+  // The frontend sends these as a JSON string in FormData.
+  let existingImages = [];
+
+  if (req.body.existingImages !== undefined) {
+    try {
+      existingImages = JSON.parse(req.body.existingImages);
+    } catch (error) {
+      return res.status(400).json({
+        message: "Invalid existing images data",
+      });
+    }
+
+    if (
+      !Array.isArray(existingImages) ||
+      !existingImages.every((image) => typeof image === "string")
+    ) {
+      return res.status(400).json({
+        message: "Existing images must be an array of image URLs",
+      });
+    }
+
+    // CHANGED 2: Limit the remaining existing images to five.
+    if (existingImages.length > 5) {
+      return res.status(400).json({
+        message: "A product can have a maximum of 5 images",
+      });
+    }
+
+    // CHANGED 3: Add newly uploaded images to the existing images.
     const baseUrl = process.env.SERVER_URL;
-    update.images = req.files.map(file => `${baseUrl}/uploads/${file.filename}`);
+
+    const newImageUrls = (req.files || []).map(
+      (file) => `${baseUrl}/uploads/${file.filename}`
+    );
+
+    const finalImages = [
+      ...existingImages,
+      ...newImageUrls,
+    ];
+
+    // CHANGED 4: Validate the final combined image count.
+    if (finalImages.length > 5) {
+      return res.status(400).json({
+        message: "A product can have a maximum of 5 images",
+      });
+    }
+
+    update.images = finalImages;
+  } else if (req.files && req.files.length > 0) {
+    // Fallback for requests that don't send existingImages.
+    // New images replace the previous images in this case.
+    const baseUrl = process.env.SERVER_URL;
+
+    update.images = req.files.map(
+      (file) => `${baseUrl}/uploads/${file.filename}`
+    );
   }
 
   if (parsedBody.name !== undefined) {
@@ -150,21 +214,53 @@ export const updateProduct = asyncHandler(async (req, res) => {
     update.slug = slugify(parsedBody.slug);
   }
 
-  const product = await Product.findByIdAndUpdate(
-    req.params.id,
-    update,
-    {
-      new: true,
-      runValidators: true,
-    }
-  );
+  let product;
 
-  if (!product) {
-    return res.status(404).json({ message: "Product not found" });
+  // Update normal product fields and images.
+  if (Object.keys(update).length > 0) {
+    product = await Product.findByIdAndUpdate(
+      req.params.id,
+      update,
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!product) {
+      return res.status(404).json({
+        message: "Product not found",
+      });
+    }
+  }
+
+  // Update stock separately through inventoryService.
+  // setProductStock emits the complete updated product exactly once.
+  if (parsedBody.stock !== undefined) {
+    product = await setProductStock(
+      req.params.id,
+      parsedBody.stock
+    );
+  } else if (product) {
+    // Emit the complete updated product for other admin dashboards.
+    getIO().to("admin-room").emit(
+      "stock:updated",
+      product.toObject()
+    );
+  } else {
+    // No fields were changed: retrieve the existing product.
+    product = await Product.findById(req.params.id);
+
+    if (!product) {
+      return res.status(404).json({
+        message: "Product not found",
+      });
+    }
   }
 
   res.json({ product });
 });
+
 
 export const deleteProduct = asyncHandler(async (req, res) => {
   const product = await Product.findByIdAndUpdate(
@@ -173,10 +269,17 @@ export const deleteProduct = asyncHandler(async (req, res) => {
     { new: true }
   );
 
-  if (!product) return res.status(404).json({ message: "Product not found" });
+  if (!product) {
+    return res.status(404).json({ message: "Product not found" });
+  }
+
+  // NEW: Notify admin clients that this product has been archived.
+  getIO().to("admin-room").emit("product:deleted", {
+    productId: product._id.toString(),
+  });
+
   res.json({ message: "Product archived successfully" });
 });
-
 export const changeStock = asyncHandler(async (req, res) => {
   const stock = req.body.stock;
 

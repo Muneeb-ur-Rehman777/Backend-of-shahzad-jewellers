@@ -100,10 +100,7 @@ export async function createGuestOrder(payload) {
       const io = getIO();
 
       for (const product of updatedProducts) {
-        io.to("admin-room").emit("stock:updated", {
-          productId: product._id.toString(),
-          stock: product.stock,
-        });
+        io.to("admin-room").emit("stock:updated", product.toObject());
       }
 
       io.to("admin-room").emit("order:created", {

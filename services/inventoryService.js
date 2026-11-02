@@ -1,7 +1,7 @@
 import Product from "../models/Product.js";
 import { getIO } from "../socket.js";
 
-// Admin sets a stock count. This is not the checkout/decrement operation.
+// Admin sets a stock count.
 export async function setProductStock(productId, quantity) {
   const product = await Product.findByIdAndUpdate(
     productId,
@@ -15,16 +15,13 @@ export async function setProductStock(productId, quantity) {
     throw error;
   }
 
-  getIO().to("admin-room").emit("stock:updated", {
-    productId: product._id.toString(),
-    stock: product.stock,
-  });
+  // CHANGED: Emit the complete updated product.
+  getIO().to("admin-room").emit("stock:updated", product.toObject());
 
   return product;
 }
 
-// Atomic decrement for a single product; useful for future checkout flows.
-// Returns null if the product does not exist or has insufficient stock.
+// Atomic decrement for checkout/order flows.
 export async function decrementStock(productId, quantity) {
   const product = await Product.findOneAndUpdate(
     { _id: productId, stock: { $gte: quantity }, isActive: true },
@@ -33,10 +30,8 @@ export async function decrementStock(productId, quantity) {
   );
 
   if (product) {
-    getIO().to("admin-room").emit("stock:updated", {
-      productId: product._id.toString(),
-      stock: product.stock,
-    });
+    // CHANGED: Emit the complete updated product.
+    getIO().to("admin-room").emit("stock:updated", product.toObject());
   }
 
   return product;
