@@ -36,12 +36,16 @@ export const getProduct = asyncHandler(async (req, res) => {
 });
 
 export const createProduct = asyncHandler(async (req, res) => {
-  const baseUrl = process.env.SERVER_URL;
+  const baseUrl = process.env.SERVER_URL || 'http://localhost:5000';
 
-  // ⬇️ Multiple images handle karne ke liye array mapping ⬇️
-  const imageUrls = req.files && req.files.length > 0 
-    ? req.files.map(file => `${baseUrl}/uploads/${file.filename}`) 
+  console.log("REQ.FILES RECEIVED:", req.files);
+  console.log("REQ.BODY RECEIVED:", req.body);
+
+  const imageUrls = req.files && req.files.length > 0
+    ? req.files.map(file => `${baseUrl}/uploads/${file.filename}`)
     : [];
+
+  console.log("GENERATED IMAGE URLS:", imageUrls);
 
   const body = {
     ...req.body,
@@ -75,7 +79,7 @@ export const createProduct = asyncHandler(async (req, res) => {
       ? body.category.toLowerCase().trim()
       : "rings",
     price: body.price,
-    images: imageUrls, // ⬇️ Array save hoga database mein ⬇️
+    images: imageUrls,
     stock: body.stock,
     weight: body.weight || "",
     purity: body.purity || "22K (916)",
@@ -134,9 +138,8 @@ export const updateProduct = asyncHandler(async (req, res) => {
     }
   }
 
-  // ⬇️ Agar nayi multiple images upload hui hain toh update karo ⬇️
   if (req.files && req.files.length > 0) {
-    const baseUrl = process.env.SERVER_URL;
+    const baseUrl = process.env.SERVER_URL || 'http://localhost:5000';
     update.images = req.files.map(file => `${baseUrl}/uploads/${file.filename}`);
   }
 
