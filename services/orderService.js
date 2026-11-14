@@ -1,4 +1,3 @@
-
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
 import { getIO } from "../socket.js";
@@ -74,6 +73,13 @@ export async function createGuestOrder(payload) {
         name: product.name,
         unitPrice,
         quantity,
+
+        // Added image field mapping so product thumbnail successfully saves in database and shows in admin panel
+        image:
+          requestedItem.image ||
+          product.images?.[0] ||
+          product.image ||
+          "",
       });
     }
 

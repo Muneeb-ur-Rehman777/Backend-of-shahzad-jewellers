@@ -1,7 +1,7 @@
 import { Router } from "express";
 import {
   listProducts, getProduct, createProduct, updateProduct,
-  deleteProduct, changeStock,
+  deleteProduct, changeStock,listAdminProducts
 } from "../controllers/productController.js";
 import { adminAuth } from "../middleware/adminAuth.js";
 import upload from "../config/multer.js";
@@ -12,6 +12,8 @@ router.get("/", listProducts);
 router.get("/:id", getProduct);
 
 router.post("/", adminAuth, upload.array("images", 5), createProduct);
+ //New
+router.get("/admin/all", adminAuth, listAdminProducts);
 
 router.put("/:id", adminAuth, upload.array("images", 5), updateProduct);
 router.patch("/:id", adminAuth, upload.array("images", 5), updateProduct);
