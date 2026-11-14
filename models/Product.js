@@ -1,3 +1,4 @@
+
 import mongoose from "mongoose";
 
 const productSchema = new mongoose.Schema(
@@ -18,7 +19,16 @@ const productSchema = new mongoose.Schema(
 
     purity: {type: String,enum: ["22K (916)", "21K (875)", "18K (750)", ""],default: "22K (916)",},
 
-    tag: {type: String,enum: ["Gold", "Diamond", "Other"],default: "Gold",index: true,},
+    // CHANGE 1: Added Silver to the existing tag options.
+    tag: {type: String,enum: ["Gold", "Diamond", "Silver", "Other"],default: "Gold",index: true,},
+
+    // CHANGE 2: Added edition to distinguish new and secondhand products.
+    edition: {type: String,enum: ["new", "secondhand"],default: "new",},
+
+    // CHANGE 3: Controls website visibility.
+    // true = Show product on website.
+    // false = Keep product in inventory only.
+    website: {type: Boolean,default: true,},
 
     price: {type: Number,required: true,min: 0,},
 

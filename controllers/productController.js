@@ -8,28 +8,109 @@ import { getIO } from "../socket.js";
 export const listProducts = asyncHandler(async (req, res) => {
   const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
   const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 12));
-  const filter = { isActive: true };
 
-  if (req.query.category && req.query.category !== 'all') {
+  // UPDATED: Public website only displays active products
+  // that are marked for website visibility.
+  const filter = {
+    isActive: true,
+    website: true,
+  };
+
+  if (req.query.category && req.query.category !== "all") {
     filter.category = req.query.category.toLowerCase().trim();
   }
 
-  if (req.query.tag && req.query.tag !== 'All') {
+  if (req.query.tag && req.query.tag !== "All") {
     const queryTag = req.query.tag.trim();
     filter.tag = { $regex: new RegExp(`^${queryTag}$`, "i") };
   }
 
-  if (req.query.featured === "true") filter.featured = true;
-  if (req.query.search) filter.$text = { $search: String(req.query.search) };
+  if (req.query.featured === "true") {
+    filter.featured = true;
+  }
+
+  if (req.query.search) {
+    filter.$text = { $search: String(req.query.search) };
+  }
 
   const [products, total] = await Promise.all([
-    Product.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
+    Product.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit),
+
     Product.countDocuments(filter),
   ]);
 
-  res.json({ products, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
+  res.json({
+    products,
+    pagination: {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit),
+    },
+  });
 });
+// NEW: Admin product listing controller.
+// Returns ALL products, including inactive and inventory-only products.
+export const listAdminProducts = asyncHandler(async (req, res) => {
+  const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 12));
 
+  // NEW: No default isActive or website filter.
+  // Admin can see active, inactive, website, and inventory-only products.
+  const filter = {};
+
+  if (req.query.category && req.query.category !== "all") {
+    filter.category = req.query.category.toLowerCase().trim();
+  }
+
+  if (req.query.tag && req.query.tag !== "All") {
+    const queryTag = req.query.tag.trim();
+    filter.tag = { $regex: new RegExp(`^${queryTag}$`, "i") };
+  }
+
+  if (req.query.featured === "true") {
+    filter.featured = true;
+  }
+
+  if (req.query.search) {
+    filter.$text = { $search: String(req.query.search) };
+  }
+
+  // NEW: Optional admin filters for active/inactive and website visibility.
+  if (req.query.isActive === "true") {
+    filter.isActive = true;
+  } else if (req.query.isActive === "false") {
+    filter.isActive = false;
+  }
+
+  if (req.query.website === "true") {
+    filter.website = true;
+  } else if (req.query.website === "false") {
+    filter.website = false;
+  }
+
+  const [products, total] = await Promise.all([
+    Product.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit),
+
+    Product.countDocuments(filter),
+  ]);
+
+  res.json({
+    products,
+    pagination: {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit),
+    },
+  });
+});
 export const getProduct = asyncHandler(async (req, res) => {
   const product = await Product.findOne({ _id: req.params.id, isActive: true });
   if (!product) return res.status(404).json({ message: "Product not found" });
@@ -51,6 +132,15 @@ export const createProduct = asyncHandler(async (req, res) => {
     stock: Number(req.body.stock) || 10,
     featured: req.body.featured === undefined ? undefined : req.body.featured === "true",
     isActive: req.body.isActive === undefined ? undefined : req.body.isActive === "true",
+
+    // NEW: Set product edition. Default is "new".
+    edition: req.body.edition || "new",
+
+    // NEW: Website visibility. Default is true.
+    // FormData sends checkbox values as strings.
+    website: req.body.website === undefined
+      ? true
+      : req.body.website === "true",
   };
 
   const errors = validateProductInput(body);
@@ -83,15 +173,19 @@ export const createProduct = asyncHandler(async (req, res) => {
     tag: selectedTag,
     featured: body.featured ?? false,
     isActive: body.isActive ?? true,
+
+    // NEW: Save edition and website visibility.
+    edition: body.edition,
+    website: body.website,
   });
 
-
-  // NEW: Notify admin clients about the newly created product.
+  // Notify admin clients about the newly created product.
   // Send the complete product so the frontend can update its product lists.
   getIO().to("admin-room").emit("product:created", product.toObject());
 
   res.status(201).json({ product });
 });
+
 
 
 export const updateProduct = asyncHandler(async (req, res) => {
@@ -106,6 +200,12 @@ export const updateProduct = asyncHandler(async (req, res) => {
     isActive:
       req.body.isActive !== undefined
         ? req.body.isActive === "true" || req.body.isActive === true
+        : undefined,
+
+    // NEW: Convert website string from FormData into a Boolean.
+    website:
+      req.body.website !== undefined
+        ? req.body.website === "true" || req.body.website === true
         : undefined,
   };
 
@@ -129,6 +229,8 @@ export const updateProduct = asyncHandler(async (req, res) => {
     "weight",
     "purity",
     "tag",
+    "edition", // NEW
+    "website", // NEW
   ];
 
   const update = {};
@@ -139,14 +241,15 @@ export const updateProduct = asyncHandler(async (req, res) => {
         update[key] = parsedBody[key].toLowerCase().trim();
       } else if (key === "tag" && typeof parsedBody[key] === "string") {
         update[key] = parsedBody[key].trim();
+      } else if (key === "edition" && typeof parsedBody[key] === "string") {
+        update[key] = parsedBody[key].trim().toLowerCase();
       } else {
         update[key] = parsedBody[key];
       }
     }
   }
 
-  // CHANGED 1: Handle existing images that the user wants to keep.
-  // The frontend sends these as a JSON string in FormData.
+  // Handle existing images that the user wants to keep.
   let existingImages = [];
 
   if (req.body.existingImages !== undefined) {
@@ -167,14 +270,12 @@ export const updateProduct = asyncHandler(async (req, res) => {
       });
     }
 
-    // CHANGED 2: Limit the remaining existing images to five.
     if (existingImages.length > 5) {
       return res.status(400).json({
         message: "A product can have a maximum of 5 images",
       });
     }
 
-    // CHANGED 3: Add newly uploaded images to the existing images.
     const baseUrl = process.env.SERVER_URL;
 
     const newImageUrls = (req.files || []).map(
@@ -186,7 +287,6 @@ export const updateProduct = asyncHandler(async (req, res) => {
       ...newImageUrls,
     ];
 
-    // CHANGED 4: Validate the final combined image count.
     if (finalImages.length > 5) {
       return res.status(400).json({
         message: "A product can have a maximum of 5 images",
@@ -195,8 +295,6 @@ export const updateProduct = asyncHandler(async (req, res) => {
 
     update.images = finalImages;
   } else if (req.files && req.files.length > 0) {
-    // Fallback for requests that don't send existingImages.
-    // New images replace the previous images in this case.
     const baseUrl = process.env.SERVER_URL;
 
     update.images = req.files.map(
@@ -235,20 +333,17 @@ export const updateProduct = asyncHandler(async (req, res) => {
   }
 
   // Update stock separately through inventoryService.
-  // setProductStock emits the complete updated product exactly once.
   if (parsedBody.stock !== undefined) {
     product = await setProductStock(
       req.params.id,
       parsedBody.stock
     );
   } else if (product) {
-    // Emit the complete updated product for other admin dashboards.
     getIO().to("admin-room").emit(
       "stock:updated",
       product.toObject()
     );
   } else {
-    // No fields were changed: retrieve the existing product.
     product = await Product.findById(req.params.id);
 
     if (!product) {
@@ -260,6 +355,7 @@ export const updateProduct = asyncHandler(async (req, res) => {
 
   res.json({ product });
 });
+
 
 
 export const deleteProduct = asyncHandler(async (req, res) => {

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { createOrder, listOrders, updateOrderStatus, } from "../controllers/orderController.js";
+import {listAdminProducts} from "../controllers/productController.js";
 import { adminAuth } from "../middleware/adminAuth.js";
 import {createbranchOrder} from "../controllers/adminController.js";
 
