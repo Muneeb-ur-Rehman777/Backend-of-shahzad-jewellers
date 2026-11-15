@@ -1,7 +1,7 @@
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
 import { getIO } from "../socket.js";
-
+import GoldRate from "../models/GoldRate.js";
 export async function createGuestOrder(payload) {
   try {
     const items = [];
@@ -13,6 +13,7 @@ export async function createGuestOrder(payload) {
       error.statusCode = 400;
       throw error;
     }
+
     if (!payload.customer) {
       const error = new Error("Customer information is required");
       error.statusCode = 400;
@@ -38,6 +39,35 @@ export async function createGuestOrder(payload) {
       throw error;
     }
 
+    // NEW: Fetch the latest gold rates for calculating complete prices.
+    const goldRates = await GoldRate.findOne().sort({ updatedAt: -1 });
+
+    // NEW: Get the applicable gold rate per gram according to product purity.
+    const getGoldRateForPurity = (purity) => {
+      if (!goldRates) return 0;
+
+      switch (purity) {
+        case "24K (999)":
+          return Number(goldRates.rate24kPerGram);
+
+        case "22K (916)":
+          return Number(goldRates.rate22kPerGram);
+
+        case "21K (875)":
+          return Math.round(
+            Number(goldRates.rate24kPerGram) * (21 / 24)
+          );
+
+        case "18K (750)":
+          return Math.round(
+            Number(goldRates.rate24kPerGram) * (18 / 24)
+          );
+
+        default:
+          return 0;
+      }
+    };
+
     for (const requestedItem of payload.items) {
       const productId = requestedItem.productId || requestedItem.product;
       const quantity = Number(requestedItem.quantity);
@@ -61,11 +91,55 @@ export async function createGuestOrder(payload) {
         throw error;
       }
 
-      product.stock -= quantity;
-      await product.save();
-      updatedProducts.push(product);
+      // Store products for stock updates after total validation.
+      updatedProducts.push({ product, quantity });
 
-      const unitPrice = Number(product.price);
+      // UPDATED: Calculate complete price instead of using making price alone.
+      const makingPrice = Number(product.price);
+      let unitPrice = makingPrice;
+
+      // NEW: Add gold value only for Gold products.
+      if (product.tag === "Gold") {
+        if (!goldRates) {
+          const error = new Error("Gold rates are unavailable");
+          error.statusCode = 503;
+          throw error;
+        }
+
+        // Extract weight in grams (supports values like 5g or 5 grams).
+        const weight = Number(
+          String(product.weight || "")
+            .replace(/,/g, "")
+            .match(/[\d.]+/)?.[0]
+        );
+
+        if (!Number.isFinite(weight) || weight <= 0) {
+          const error = new Error(
+            `Invalid weight for product ${product.name}`
+          );
+          error.statusCode = 400;
+          throw error;
+        }
+
+        // Get gold rate according to product purity.
+        const goldRate = getGoldRateForPurity(product.purity);
+
+        if (!Number.isFinite(goldRate) || goldRate <= 0) {
+          const error = new Error(
+            `Invalid gold rate for product ${product.name}`
+          );
+          error.statusCode = 400;
+          throw error;
+        }
+
+        // Calculate gold value.
+        const goldValue = Math.round(weight * goldRate);
+
+        // Complete price = Making Price + Gold Value.
+        unitPrice = makingPrice + goldValue;
+      }
+
+      // Total uses the complete unit price.
       total += unitPrice * quantity;
 
       items.push({
@@ -73,14 +147,29 @@ export async function createGuestOrder(payload) {
         name: product.name,
         unitPrice,
         quantity,
-
-        // Added image field mapping so product thumbnail successfully saves in database and shows in admin panel
         image:
           requestedItem.image ||
           product.images?.[0] ||
           product.image ||
           "",
       });
+    }
+
+    // NEW: Compare frontend total with backend-calculated total.
+    const frontendTotal = Number(payload.total);
+
+    if (!Number.isFinite(frontendTotal) || frontendTotal !== total) {
+      const error = new Error(
+        `Order total mismatch. Frontend total: ${frontendTotal}, Backend total: ${total}`
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // NEW: Update stock only after the totals match.
+    for (const { product, quantity } of updatedProducts) {
+      product.stock -= quantity;
+      await product.save();
     }
 
     const orderNumber = `SJ-${Date.now()}-${Math.floor(
@@ -105,7 +194,7 @@ export async function createGuestOrder(payload) {
     try {
       const io = getIO();
 
-      for (const product of updatedProducts) {
+      for (const { product } of updatedProducts) {
         io.to("admin-room").emit("stock:updated", product.toObject());
       }
 

@@ -17,7 +17,7 @@ const productSchema = new mongoose.Schema(
 
     weight: {type: String,default: "",trim: true,},
 
-    purity: {type: String,enum: ["22K (916)", "21K (875)", "18K (750)", ""],default: "22K (916)",},
+    purity: {type: String,enum: ["22K (916)", "21K (875)", "18K (750)", "24K (999)",""],default: "22K (916)",},
 
     // CHANGE 1: Added Silver to the existing tag options.
     tag: {type: String,enum: ["Gold", "Diamond", "Silver", "Other"],default: "Gold",index: true,},
