@@ -113,33 +113,11 @@ export async function createGuestOrder(payload) {
             .match(/[\d.]+/)?.[0]
         );
 
-        if (!Number.isFinite(weight) || weight <= 0) {
-          const error = new Error(
-            `Invalid weight for product ${product.name}`
-          );
-          error.statusCode = 400;
-          throw error;
-        }
+      // FIX: Use frontend calculated unit price if sent, otherwise fallback to product price
+      const unitPrice = requestedItem.unitPrice !== undefined 
+        ? Number(requestedItem.unitPrice) 
+        : Number(product.price);
 
-        // Get gold rate according to product purity.
-        const goldRate = getGoldRateForPurity(product.purity);
-
-        if (!Number.isFinite(goldRate) || goldRate <= 0) {
-          const error = new Error(
-            `Invalid gold rate for product ${product.name}`
-          );
-          error.statusCode = 400;
-          throw error;
-        }
-
-        // Calculate gold value.
-        const goldValue = Math.round(weight * goldRate);
-
-        // Complete price = Making Price + Gold Value.
-        unitPrice = makingPrice + goldValue;
-      }
-
-      // Total uses the complete unit price.
       total += unitPrice * quantity;
 
       items.push({
@@ -209,8 +187,38 @@ export async function createGuestOrder(payload) {
     }
 
     return order;
-  } catch (err) {
+  } catch (err)  {
     console.error("Order creation error:", err);
     throw err;
   }
+}
+
+export function validateGuestOrder(body) {
+  const errors = [];
+  const customer = body.customer;
+
+  if (!customer || typeof customer !== "object") {
+    return ["customer details are required"];
+  }
+
+  for (const field of ["name", "phone", "address", "city"]) {
+    if (typeof customer[field] !== "string" || !customer[field].trim()) {
+      errors.push(`customer.${field} is required`);
+    }
+  }
+
+  if (!Array.isArray(body.items) || body.items.length === 0) {
+    errors.push("items must be a non-empty array");
+  } else {
+    for (const [index, item] of body.items.entries()) {
+      if (!item.productId && !item.product) {
+        errors.push(`items[${index}].productId is required`);
+      }
+      if (!Number.isInteger(item.quantity) || item.quantity < 1) {
+        errors.push(`items[${index}].quantity must be a positive integer`);
+      }
+    }
+  }
+
+  return errors;
 }

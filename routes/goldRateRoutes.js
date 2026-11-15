@@ -17,13 +17,26 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
     try {
-        const { rate24kPerGram, rate22kPerGram, rate24kPerTola, rate22kPerTola } = req.body;
+        const { 
+            rate24kPerGram, 
+            rate22kPerGram, 
+            rate24kPerTola, 
+            rate22kPerTola,
+            rate21kPerTola,
+            rate21kPerGram,
+            rate18kPerTola,
+            rate18kPerGram
+        } = req.body;
 
         const newGoldRate = new GoldRate({
             rate24kPerGram,
             rate22kPerGram,
             rate24kPerTola,
             rate22kPerTola,
+            rate21kPerTola: rate21kPerTola || Math.round(Number(rate24kPerTola) * (21/24)),
+            rate21kPerGram: rate21kPerGram || Math.round((Number(rate24kPerTola) * (21/24)) / 11.664),
+            rate18kPerTola: rate18kPerTola || Math.round(Number(rate24kPerTola) * (18/24)),
+            rate18kPerGram: rate18kPerGram || Math.round((Number(rate24kPerTola) * (18/24)) / 11.664),
             updatedAt: Date.now()
         });
 
