@@ -11,7 +11,7 @@ const productSchema = new mongoose.Schema(
 
     category: {
       type: String, required: true, lowercase: true, trim: true,
-      enum: ["rings", "necklaces", "sets", "bangles", "earrings", "bracelets",],
+      enum: ["rings", "necklaces", "sets", "bangles", "earrings", "bracelets","gentsring"],
       default: "rings",
       index: true,
     },
