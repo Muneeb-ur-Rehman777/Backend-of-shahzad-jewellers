@@ -1,7 +1,9 @@
+
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
 import { getIO } from "../socket.js";
 import GoldRate from "../models/GoldRate.js";
+
 export async function createGuestOrder(payload) {
   try {
     const items = [];
@@ -39,10 +41,10 @@ export async function createGuestOrder(payload) {
       throw error;
     }
 
-    // NEW: Fetch the latest gold rates for calculating complete prices.
+    // Fetch latest gold rates
     const goldRates = await GoldRate.findOne().sort({ updatedAt: -1 });
 
-    // NEW: Get the applicable gold rate per gram according to product purity.
+    // Get gold rate according to purity
     const getGoldRateForPurity = (purity) => {
       if (!goldRates) return 0;
 
@@ -91,14 +93,12 @@ export async function createGuestOrder(payload) {
         throw error;
       }
 
-      // Store products for stock updates after total validation.
       updatedProducts.push({ product, quantity });
 
-      // UPDATED: Calculate complete price instead of using making price alone.
+      // Calculate product price
       const makingPrice = Number(product.price);
-      let unitPrice = makingPrice;
+      let calculatedPrice = makingPrice;
 
-      // NEW: Add gold value only for Gold products.
       if (product.tag === "Gold") {
         if (!goldRates) {
           const error = new Error("Gold rates are unavailable");
@@ -106,17 +106,45 @@ export async function createGuestOrder(payload) {
           throw error;
         }
 
-        // Extract weight in grams (supports values like 5g or 5 grams).
         const weight = Number(
           String(product.weight || "")
             .replace(/,/g, "")
             .match(/[\d.]+/)?.[0]
         );
 
-      // FIX: Use frontend calculated unit price if sent, otherwise fallback to product price
-      const unitPrice = requestedItem.unitPrice !== undefined 
-        ? Number(requestedItem.unitPrice) 
-        : Number(product.price);
+        if (!Number.isFinite(weight) || weight <= 0) {
+          const error = new Error(
+            `Invalid gold weight for product ${product.name}`
+          );
+          error.statusCode = 400;
+          throw error;
+        }
+
+        const goldRate = getGoldRateForPurity(product.purity);
+
+        if (!Number.isFinite(goldRate) || goldRate <= 0) {
+          const error = new Error(
+            `Invalid gold rate for purity ${product.purity}`
+          );
+          error.statusCode = 503;
+          throw error;
+        }
+
+        calculatedPrice = weight * goldRate + makingPrice;
+      }
+
+      // Use frontend calculated price if provided,
+      // otherwise use the backend calculated price.
+      const unitPrice =
+        requestedItem.unitPrice !== undefined
+          ? Number(requestedItem.unitPrice)
+          : calculatedPrice;
+
+      if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+        const error = new Error("Invalid product price");
+        error.statusCode = 400;
+        throw error;
+      }
 
       total += unitPrice * quantity;
 
@@ -133,7 +161,7 @@ export async function createGuestOrder(payload) {
       });
     }
 
-    // NEW: Compare frontend total with backend-calculated total.
+    // Compare frontend total with backend total
     const frontendTotal = Number(payload.total);
 
     if (!Number.isFinite(frontendTotal) || frontendTotal !== total) {
@@ -144,7 +172,7 @@ export async function createGuestOrder(payload) {
       throw error;
     }
 
-    // NEW: Update stock only after the totals match.
+    // Update stock only after total validation
     for (const { product, quantity } of updatedProducts) {
       product.stock -= quantity;
       await product.save();
@@ -169,6 +197,7 @@ export async function createGuestOrder(payload) {
       notes: payload.notes || "",
     });
 
+    // Socket events
     try {
       const io = getIO();
 
@@ -187,7 +216,8 @@ export async function createGuestOrder(payload) {
     }
 
     return order;
-  } catch (err)  {
+
+  } catch (err) {
     console.error("Order creation error:", err);
     throw err;
   }
@@ -214,8 +244,11 @@ export function validateGuestOrder(body) {
       if (!item.productId && !item.product) {
         errors.push(`items[${index}].productId is required`);
       }
+
       if (!Number.isInteger(item.quantity) || item.quantity < 1) {
-        errors.push(`items[${index}].quantity must be a positive integer`);
+        errors.push(
+          `items[${index}].quantity must be a positive integer`
+        );
       }
     }
   }
