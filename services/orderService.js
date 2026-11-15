@@ -65,7 +65,11 @@ export async function createGuestOrder(payload) {
       await product.save();
       updatedProducts.push(product);
 
-      const unitPrice = Number(product.price);
+      // FIX: Use frontend calculated unit price if sent, otherwise fallback to product price
+      const unitPrice = requestedItem.unitPrice !== undefined 
+        ? Number(requestedItem.unitPrice) 
+        : Number(product.price);
+
       total += unitPrice * quantity;
 
       items.push({
@@ -73,8 +77,6 @@ export async function createGuestOrder(payload) {
         name: product.name,
         unitPrice,
         quantity,
-
-        // Added image field mapping so product thumbnail successfully saves in database and shows in admin panel
         image:
           requestedItem.image ||
           product.images?.[0] ||
@@ -120,8 +122,38 @@ export async function createGuestOrder(payload) {
     }
 
     return order;
-  } catch (err) {
+  } catch (err)  {
     console.error("Order creation error:", err);
     throw err;
   }
+}
+
+export function validateGuestOrder(body) {
+  const errors = [];
+  const customer = body.customer;
+
+  if (!customer || typeof customer !== "object") {
+    return ["customer details are required"];
+  }
+
+  for (const field of ["name", "phone", "address", "city"]) {
+    if (typeof customer[field] !== "string" || !customer[field].trim()) {
+      errors.push(`customer.${field} is required`);
+    }
+  }
+
+  if (!Array.isArray(body.items) || body.items.length === 0) {
+    errors.push("items must be a non-empty array");
+  } else {
+    for (const [index, item] of body.items.entries()) {
+      if (!item.productId && !item.product) {
+        errors.push(`items[${index}].productId is required`);
+      }
+      if (!Number.isInteger(item.quantity) || item.quantity < 1) {
+        errors.push(`items[${index}].quantity must be a positive integer`);
+      }
+    }
+  }
+
+  return errors;
 }
