@@ -1,13 +1,15 @@
 import express from 'express';
 import GoldRate from '../models/GoldRate.js';
+import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
+// Public route: Rates dekhne ke liye (Sab ke liye open)
 router.get('/', async (req, res) => {
     try {
         const latestRate = await GoldRate.findOne().sort({ updatedAt: -1 });
         if (!latestRate) {
-            return res.status(404).json({ message: 'No gold rates found. Please set them from admin panel.' });
+            return res.status(404).json({ message: 'No gold rates found.' });
         }
         res.status(200).json(latestRate);
     } catch (error) {
@@ -15,8 +17,16 @@ router.get('/', async (req, res) => {
     }
 });
 
-router.post('/', async (req, res) => {
+// Protected route: Sirf Admin rates update kar sakta hai (Employee blocked)
+router.post('/', protect, async (req, res) => {
     try {
+        // Yeh check ensure karega ke agar request bhejne wala employee hai, toh foran block kar dein
+        if (req.employee || req.user?.role === 'employee') {
+            return res.status(403).json({ 
+                message: 'Access denied. Employees are not authorized to update gold rates.' 
+            });
+        }
+
         const { 
             rate24kPerGram, 
             rate22kPerGram, 

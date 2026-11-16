@@ -1,15 +1,14 @@
 import { Router } from "express";
-import { createOrder, listOrders, updateOrderStatus, } from "../controllers/orderController.js";
-import {listAdminProducts} from "../controllers/productController.js";
-import { adminAuth } from "../middleware/adminAuth.js";
-import {createbranchOrder} from "../controllers/adminController.js";
+import { createOrder, listOrders, updateOrderStatus } from "../controllers/orderController.js";
+import { listAdminProducts } from "../controllers/productController.js";
+import { adminAuth } from "../middleware/adminAuth.js"; // Changed from protect to adminAuth
+import { createbranchOrder } from "../controllers/adminController.js";
 
 const router = Router();
 
 router.post("/", createOrder);
 
-router.post("/createorder",adminAuth,createbranchOrder);
-
+router.post("/createorder", adminAuth, createbranchOrder);
 router.get("/", adminAuth, listOrders);
 router.patch("/:id/status", adminAuth, updateOrderStatus);
 

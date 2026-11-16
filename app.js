@@ -4,6 +4,7 @@ import productRoutes from "./routes/productRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
 import goldRateRoutes from "./routes/goldRateRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
+import employeeRoutes from "./routes/employeeRoutes.js"; // 1. Yahan employeeRoutes import kiya
 import { notFound } from "./middleware/notFound.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import path from "path";
@@ -27,6 +28,7 @@ app.use(
   express.static(path.join(process.cwd(), "uploads"))
 );
 app.use("/api/admin", adminRoutes);
+app.use("/api/employees", employeeRoutes); // 2. Yahan route mount kar diya
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/gold-rates", goldRateRoutes);
