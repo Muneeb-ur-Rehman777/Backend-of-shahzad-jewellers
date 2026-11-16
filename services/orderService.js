@@ -1,4 +1,3 @@
-
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
 import { getIO } from "../socket.js";
@@ -71,8 +70,19 @@ export async function createGuestOrder(payload) {
     };
 
     for (const requestedItem of payload.items) {
-      const productId = requestedItem.productId || requestedItem.product;
+      const productId =
+        requestedItem.productId ||
+        requestedItem.product ||
+        requestedItem._id ||
+        requestedItem.id;
+
       const quantity = Number(requestedItem.quantity);
+
+      if (!productId) {
+        const error = new Error("Product ID is missing in order item");
+        error.statusCode = 400;
+        throw error;
+      }
 
       if (!Number.isInteger(quantity) || quantity < 1) {
         const error = new Error("Invalid product quantity");
@@ -80,14 +90,14 @@ export async function createGuestOrder(payload) {
         throw error;
       }
 
+      // Find product without isActive restriction
       const product = await Product.findOne({
         _id: productId,
-        isActive: true,
       });
 
       if (!product || product.stock < quantity) {
         const error = new Error(
-          `Product ${productId} is unavailable or has insufficient stock`
+          `Product ${productId} is unavailable or has insufficient stock (Available: ${product?.stock ?? 0}, Requested: ${quantity})`
         );
         error.statusCode = 409;
         throw error;
@@ -133,8 +143,6 @@ export async function createGuestOrder(payload) {
         calculatedPrice = weight * goldRate + makingPrice;
       }
 
-      // Use frontend calculated price if provided,
-      // otherwise use the backend calculated price.
       const unitPrice =
         requestedItem.unitPrice !== undefined
           ? Number(requestedItem.unitPrice)
@@ -161,10 +169,9 @@ export async function createGuestOrder(payload) {
       });
     }
 
-    // Compare frontend total with backend total
     const frontendTotal = Number(payload.total);
 
-    if (!Number.isFinite(frontendTotal) || frontendTotal !== total) {
+    if (!Number.isFinite(frontendTotal) || Math.abs(frontendTotal - total) > 5) {
       const error = new Error(
         `Order total mismatch. Frontend total: ${frontendTotal}, Backend total: ${total}`
       );
@@ -241,7 +248,7 @@ export function validateGuestOrder(body) {
     errors.push("items must be a non-empty array");
   } else {
     for (const [index, item] of body.items.entries()) {
-      if (!item.productId && !item.product) {
+      if (!item.productId && !item.product && !item._id && !item.id) {
         errors.push(`items[${index}].productId is required`);
       }
 
