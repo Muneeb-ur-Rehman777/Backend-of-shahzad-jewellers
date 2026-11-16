@@ -21,7 +21,7 @@ export function initSocket(httpServer) {
       if (!token) return next(new Error("Authentication required"));
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      if (decoded.role !== "admin") {
+      if (decoded.role !== "admin" && decoded.role !== "employee") {
         return next(new Error("Admin access only"));
       }
 
