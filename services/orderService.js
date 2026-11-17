@@ -93,7 +93,7 @@ export async function createGuestOrder(payload) {
       // Find product without isActive restriction
       const product = await Product.findOne({
         _id: productId,
-      });
+      }).populate("subCategory", "name slug");
 
       if (!product || product.stock < quantity) {
         const error = new Error(
@@ -166,6 +166,8 @@ export async function createGuestOrder(payload) {
           product.images?.[0] ||
           product.image ||
           "",
+        category: product.category || "",
+        subCategory: product.subCategory?.name || "",
       });
     }
 

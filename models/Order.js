@@ -6,9 +6,14 @@ const orderItemSchema = new mongoose.Schema(
     name: { type: String, required: true },
     unitPrice: { type: Number, required: true, min: 0 },
     quantity: { type: Number, required: true, min: 1, validate: Number.isInteger },
-    
+
     //Added image field so product thumbnail saves in database and shows in admin panel
-    image: { type: String, default: "" }, 
+    image: { type: String, default: "" },
+     // Main category slug, e.g. "rings", "sets"
+    category: { type: String, default: "" },
+
+    // Subcategory name, e.g. "Engagement Rings"
+    subCategory: { type: String, default: "" },
   },
   { _id: false }
 );
