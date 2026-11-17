@@ -1,0 +1,16 @@
+export const MAIN_CATEGORIES = [
+  { name: "Rings", slug: "rings" },
+  { name: "Necklaces", slug: "necklaces" },
+  { name: "Sets", slug: "sets" },
+  { name: "Bangles", slug: "bangles" },
+  { name: "Earrings", slug: "earrings" },
+  { name: "Bracelets", slug: "bracelets" },
+  { name: "Gents Ring", slug: "gents-ring" },
+  { name: "Ladies Ring", slug: "ladies-ring" },
+  { name: "Baby Ring", slug: "baby-ring" },
+  { name: "Tops", slug: "tops" },
+  { name: "Bali", slug: "bali" },
+  { name: "Pendant", slug: "pendant" },
+  { name: "Chain", slug: "chain" },
+  { name: "Mala", slug: "mala" },
+];

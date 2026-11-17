@@ -7,6 +7,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 import employeeRoutes from "./routes/employeeRoutes.js"; // 1. Yahan employeeRoutes import kiya
 import { notFound } from "./middleware/notFound.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import subCategoryRoutes from "./routes/subCategoryRoutes.js";
 import path from "path";
 const app = express();
 
@@ -32,6 +33,7 @@ app.use("/api/employees", employeeRoutes); // 2. Yahan route mount kar diya
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/gold-rates", goldRateRoutes);
+app.use("/api/subcategories", subCategoryRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

@@ -4,12 +4,14 @@ import { slugify } from "../utils/slugify.js";
 import { validateProductInput } from "../validators/productValidator.js";
 import { setProductStock } from "../services/inventoryService.js";
 import { getIO } from "../socket.js";
+import SubCategory from "../models/SubCategory.js";
+import mongoose from "mongoose";
 
 export const listProducts = asyncHandler(async (req, res) => {
   const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
   const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 12));
 
-  // UPDATED: Public website only displays active products
+  // Public website only displays active products
   // that are marked for website visibility.
   const filter = {
     isActive: true,
@@ -35,6 +37,7 @@ export const listProducts = asyncHandler(async (req, res) => {
 
   const [products, total] = await Promise.all([
     Product.find(filter)
+      .populate("subCategory", "name slug")
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit),
@@ -58,7 +61,7 @@ export const listAdminProducts = asyncHandler(async (req, res) => {
   const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
   const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 12));
 
-  // NEW: No default isActive or website filter.
+  // No default isActive or website filter.
   // Admin can see active, inactive, website, and inventory-only products.
   const filter = {};
 
@@ -79,7 +82,7 @@ export const listAdminProducts = asyncHandler(async (req, res) => {
     filter.$text = { $search: String(req.query.search) };
   }
 
-  // NEW: Optional admin filters for active/inactive and website visibility.
+  // Optional admin filters for active/inactive and website visibility.
   if (req.query.isActive === "true") {
     filter.isActive = true;
   } else if (req.query.isActive === "false") {
@@ -94,6 +97,7 @@ export const listAdminProducts = asyncHandler(async (req, res) => {
 
   const [products, total] = await Promise.all([
     Product.find(filter)
+      .populate("subCategory", "name slug")
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit),
@@ -112,41 +116,94 @@ export const listAdminProducts = asyncHandler(async (req, res) => {
   });
 });
 export const getProduct = asyncHandler(async (req, res) => {
-  const product = await Product.findOne({ _id: req.params.id, isActive: true });
-  if (!product) return res.status(404).json({ message: "Product not found" });
+  const product = await Product.findById(req.params.id)
+    .populate("subCategory", "name slug");
+
+  if (!product) {
+    return res.status(404).json({ message: "Product not found" });
+  }
+
   res.json({ product });
 });
 
 export const createProduct = asyncHandler(async (req, res) => {
   const baseUrl = process.env.SERVER_URL;
 
-  // Handle multiple uploaded images.
+  // Handle uploaded images.
   const imageUrls = req.files && req.files.length > 0
-    ? req.files.map(file => `${baseUrl}/uploads/${file.filename}`)
+    ? req.files.map(
+      (file) => `${baseUrl}/uploads/${file.filename}`
+    )
     : [];
+
+  const normalizedCategory = req.body.category
+    ? req.body.category.toLowerCase().trim()
+    : "rings";
+
+  const subCategoryId = req.body.subCategory?.trim() || "";
+
+  // Validate subcategory ID and its relationship with the main category.
+  let selectedSubCategory = null;
+
+  if (subCategoryId) {
+    if (!mongoose.Types.ObjectId.isValid(subCategoryId)) {
+      return res.status(400).json({
+        message: "Invalid subcategory ID.",
+      });
+    }
+
+    selectedSubCategory = await SubCategory.findOne({
+      _id: subCategoryId,
+      parentCategory: normalizedCategory,
+      isActive: true,
+    });
+
+    if (!selectedSubCategory) {
+      return res.status(400).json({
+        message:
+          "Selected subcategory does not belong to the selected category or is inactive.",
+      });
+    }
+  }
 
   const body = {
     ...req.body,
+    category: normalizedCategory,
+    subCategory: selectedSubCategory
+      ? selectedSubCategory._id
+      : null,
     images: imageUrls,
     price: Number(req.body.price),
-    stock: Number(req.body.stock) || 10,
-    featured: req.body.featured === undefined ? undefined : req.body.featured === "true",
-    isActive: req.body.isActive === undefined ? undefined : req.body.isActive === "true",
 
-    // NEW: Set product edition. Default is "new".
+    // Preserve zero stock instead of replacing it with 10.
+    stock:
+      req.body.stock === undefined || req.body.stock === ""
+        ? 10
+        : Number(req.body.stock),
+
+    featured:
+      req.body.featured === undefined
+        ? undefined
+        : req.body.featured === "true",
+
+    isActive:
+      req.body.isActive === undefined
+        ? undefined
+        : req.body.isActive === "true",
+
     edition: req.body.edition || "new",
 
-    // NEW: Website visibility. Default is true.
-    // FormData sends checkbox values as strings.
-    website: req.body.website === undefined
-      ? true
-      : req.body.website === "true",
+    website:
+      req.body.website === undefined
+        ? true
+        : req.body.website === "true",
   };
 
   const errors = validateProductInput(body);
 
   if (errors.length) {
     console.log("Validation Errors:", errors);
+
     return res.status(400).json({
       message: "Invalid product data",
       errors,
@@ -154,58 +211,83 @@ export const createProduct = asyncHandler(async (req, res) => {
   }
 
   const baseSlug = slugify(body.slug || body.name);
-  const uniqueSlug = `${baseSlug}-${Date.now().toString().slice(-4)}`;
 
-  const selectedTag = body.tag ? body.tag.trim() : "Gold";
+  const uniqueSlug = `${baseSlug}-${Date.now()
+    .toString()
+    .slice(-4)}`;
+
+  const selectedTag = body.tag
+    ? body.tag.trim()
+    : "Gold";
 
   const product = await Product.create({
     name: body.name.trim(),
     slug: uniqueSlug,
     description: body.description || "",
-    category: body.category
-      ? body.category.toLowerCase().trim()
-      : "rings",
+
+    category: body.category,
+
+    // NEW: Save the selected subcategory reference.
+    subCategory: body.subCategory,
+
     price: body.price,
     images: imageUrls,
     stock: body.stock,
     weight: body.weight || "",
     purity: body.purity || "22K (916)",
     tag: selectedTag,
+
     featured: body.featured ?? false,
     isActive: body.isActive ?? true,
 
-    // NEW: Save edition and website visibility.
     edition: body.edition,
     website: body.website,
   });
 
   // Notify admin clients about the newly created product.
-  // Send the complete product so the frontend can update its product lists.
-  getIO().to("admin-room").emit("product:created", product.toObject());
+  getIO()
+    .to("admin-room")
+    .emit("product:created", product.toObject());
 
   res.status(201).json({ product });
 });
 
 
 
+
 export const updateProduct = asyncHandler(async (req, res) => {
   const parsedBody = {
     ...req.body,
-    price: req.body.price !== undefined ? Number(req.body.price) : undefined,
-    stock: req.body.stock !== undefined ? Number(req.body.stock) : undefined,
+
+    price:
+      req.body.price !== undefined
+        ? Number(req.body.price)
+        : undefined,
+
+    stock:
+      req.body.stock !== undefined
+        ? Number(req.body.stock)
+        : undefined,
+
     featured:
       req.body.featured !== undefined
         ? req.body.featured === "true" || req.body.featured === true
         : undefined,
+
     isActive:
       req.body.isActive !== undefined
         ? req.body.isActive === "true" || req.body.isActive === true
         : undefined,
 
-    // NEW: Convert website string from FormData into a Boolean.
     website:
       req.body.website !== undefined
         ? req.body.website === "true" || req.body.website === true
+        : undefined,
+
+    // NEW: Subcategory ID from FormData.
+    subCategory:
+      req.body.subCategory !== undefined
+        ? req.body.subCategory.trim()
         : undefined,
   };
 
@@ -213,6 +295,7 @@ export const updateProduct = asyncHandler(async (req, res) => {
 
   if (errors.length) {
     console.log("Validation Errors:", errors);
+
     return res.status(400).json({
       message: "Invalid product data",
       errors,
@@ -229,8 +312,8 @@ export const updateProduct = asyncHandler(async (req, res) => {
     "weight",
     "purity",
     "tag",
-    "edition", // NEW
-    "website", // NEW
+    "edition",
+    "website",
   ];
 
   const update = {};
@@ -246,6 +329,45 @@ export const updateProduct = asyncHandler(async (req, res) => {
       } else {
         update[key] = parsedBody[key];
       }
+    }
+  }
+
+  // NEW: Validate and update the selected subcategory.
+  if (parsedBody.subCategory !== undefined) {
+    if (!parsedBody.subCategory) {
+      // Admin selected "No subcategory".
+      update.subCategory = null;
+    } else {
+      // Get the category that will belong to this product.
+      let productCategory = update.category;
+
+      if (!productCategory) {
+        const existingProduct = await Product.findById(req.params.id)
+          .select("category");
+
+        if (!existingProduct) {
+          return res.status(404).json({
+            message: "Product not found",
+          });
+        }
+
+        productCategory = existingProduct.category;
+      }
+
+      // Ensure the selected subcategory belongs to this main category.
+      const selectedSubCategory = await SubCategory.findOne({
+        _id: parsedBody.subCategory,
+        parentCategory: productCategory,
+        isActive: true,
+      });
+
+      if (!selectedSubCategory) {
+        return res.status(400).json({
+          message: "Invalid subcategory for the selected main category.",
+        });
+      }
+
+      update.subCategory = selectedSubCategory._id;
     }
   }
 
@@ -304,6 +426,7 @@ export const updateProduct = asyncHandler(async (req, res) => {
 
   if (parsedBody.name !== undefined) {
     update.name = parsedBody.name.trim();
+
     update.slug =
       slugify(parsedBody.slug || parsedBody.name) +
       "-" +
@@ -323,7 +446,7 @@ export const updateProduct = asyncHandler(async (req, res) => {
         new: true,
         runValidators: true,
       }
-    );
+    ).populate("subCategory", "name slug");
 
     if (!product) {
       return res.status(404).json({
@@ -338,13 +461,17 @@ export const updateProduct = asyncHandler(async (req, res) => {
       req.params.id,
       parsedBody.stock
     );
+
+    // Return the populated subcategory in the response.
+    await product.populate("subCategory", "name slug");
   } else if (product) {
     getIO().to("admin-room").emit(
       "stock:updated",
       product.toObject()
     );
   } else {
-    product = await Product.findById(req.params.id);
+    product = await Product.findById(req.params.id)
+      .populate("subCategory", "name slug");
 
     if (!product) {
       return res.status(404).json({
@@ -355,7 +482,6 @@ export const updateProduct = asyncHandler(async (req, res) => {
 
   res.json({ product });
 });
-
 
 
 export const deleteProduct = asyncHandler(async (req, res) => {
