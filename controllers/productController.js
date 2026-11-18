@@ -5,6 +5,7 @@ import { validateProductInput } from "../validators/productValidator.js";
 import { setProductStock } from "../services/inventoryService.js";
 import { getIO } from "../socket.js";
 import SubCategory from "../models/SubCategory.js";
+import Order from "../models/Order.js"; // Order model imported for most delivered sorting
 import mongoose from "mongoose";
 
 export const listProducts = asyncHandler(async (req, res) => {
@@ -18,8 +19,25 @@ export const listProducts = asyncHandler(async (req, res) => {
     website: true,
   };
 
+  // YAHAN YE NEW CONDITION ADD KARI HAI:
+  if (req.query.edition) {
+    filter.edition = req.query.edition.toLowerCase().trim();
+  } else {
+    filter.edition = "new";
+  }
+
   if (req.query.category && req.query.category !== "all") {
     filter.category = req.query.category.toLowerCase().trim();
+  }
+
+  // YAHAN NEW SUBCATEGORY FILTER ADD HUA HAI:
+  if (req.query.subcategory && req.query.subcategory !== "all") {
+    const subCatDoc = await SubCategory.findOne({ slug: req.query.subcategory.toLowerCase().trim() });
+    if (subCatDoc) {
+      filter.subCategory = subCatDoc._id;
+    } else {
+      filter.subCategory = req.query.subcategory;
+    }
   }
 
   if (req.query.tag && req.query.tag !== "All") {
@@ -35,15 +53,52 @@ export const listProducts = asyncHandler(async (req, res) => {
     filter.$text = { $search: String(req.query.search) };
   }
 
-  const [products, total] = await Promise.all([
-    Product.find(filter)
-      .populate("subCategory", "name slug")
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit),
+  // MOST DELIVERED / ORDER FREQUENCY SORTING LOGIC
+  let products = [];
+  let total = 0;
 
-    Product.countDocuments(filter),
-  ]);
+  if (req.query.sortBy === "most-delivered" || req.query.bestSelling === "true") {
+    // Step 1: Aggregate delivered orders
+    const topOrderedProducts = await Order.aggregate([
+      { $match: { $or: [{ status: "delivered" }, { status: "Delivered" }, { orderStatus: "delivered" }] } },
+      { $unwind: "$items" },
+      {
+        $group: {
+          _id: "$items.product",
+          totalSold: { $sum: "$items.quantity" }
+        }
+      },
+      { $sort: { totalSold: -1 } }
+    ]);
+
+    const orderedProductIds = topOrderedProducts.map(p => p._id);
+
+    // Step 2: Fetch strictly those products that have actual deliveries, sorted by most ordered quantity
+    const specificFilter = { ...filter, _id: { $in: orderedProductIds } };
+    
+    const matchedProducts = await Product.find(specificFilter).populate("subCategory", "name slug");
+    
+    products = orderedProductIds
+      .map(id => matchedProducts.find(p => p._id.toString() === id.toString()))
+      .filter(Boolean)
+      .slice((page - 1) * limit, page * limit);
+
+    total = orderedProductIds.length;
+  } else {
+    // Standard listing with creation date sorting
+    const [fetchedProducts, fetchedTotal] = await Promise.all([
+      Product.find(filter)
+        .populate("subCategory", "name slug")
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+
+      Product.countDocuments(filter),
+    ]);
+
+    products = fetchedProducts;
+    total = fetchedTotal;
+  }
 
   res.json({
     products,
@@ -55,6 +110,7 @@ export const listProducts = asyncHandler(async (req, res) => {
     },
   });
 });
+
 // NEW: Admin product listing controller.
 // Returns ALL products, including inactive and inventory-only products.
 export const listAdminProducts = asyncHandler(async (req, res) => {
@@ -115,6 +171,7 @@ export const listAdminProducts = asyncHandler(async (req, res) => {
     },
   });
 });
+
 export const getProduct = asyncHandler(async (req, res) => {
   const product = await Product.findById(req.params.id)
     .populate("subCategory", "name slug");
@@ -251,9 +308,6 @@ export const createProduct = asyncHandler(async (req, res) => {
 
   res.status(201).json({ product });
 });
-
-
-
 
 export const updateProduct = asyncHandler(async (req, res) => {
   const parsedBody = {
@@ -483,7 +537,6 @@ export const updateProduct = asyncHandler(async (req, res) => {
   res.json({ product });
 });
 
-
 export const deleteProduct = asyncHandler(async (req, res) => {
   const product = await Product.findByIdAndUpdate(
     req.params.id,
@@ -502,6 +555,7 @@ export const deleteProduct = asyncHandler(async (req, res) => {
 
   res.json({ message: "Product archived successfully" });
 });
+
 export const changeStock = asyncHandler(async (req, res) => {
   const stock = req.body.stock;
 
