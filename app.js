@@ -13,8 +13,8 @@ const app = express();
 
 app.use(cors({
   origin: [
-    "http://localhost:3000",
-    "http://localhost:3001"
+    process.env.NEXT_PUBLIC_FRONT_URL,
+    process.env.ADMIN_URL
   ],
   methods: ["GET", "POST", "PATCH", "PUT", "DELETE"],
   credentials: true,

@@ -184,7 +184,7 @@ export const getProduct = asyncHandler(async (req, res) => {
 });
 
 export const createProduct = asyncHandler(async (req, res) => {
-  const baseUrl = process.env.SERVER_URL;
+  const baseUrl = NEXT_PUBLIC_SERVER_URL
 
   // Handle uploaded images.
   const imageUrls = req.files && req.files.length > 0
@@ -452,7 +452,7 @@ export const updateProduct = asyncHandler(async (req, res) => {
       });
     }
 
-    const baseUrl = process.env.SERVER_URL;
+    const baseUrl = NEXT_PUBLIC_SERVER_URL
 
     const newImageUrls = (req.files || []).map(
       (file) => `${baseUrl}/uploads/${file.filename}`
@@ -471,7 +471,7 @@ export const updateProduct = asyncHandler(async (req, res) => {
 
     update.images = finalImages;
   } else if (req.files && req.files.length > 0) {
-    const baseUrl = process.env.SERVER_URL;
+    const baseUrl = NEXT_PUBLIC_SERVER_URL
 
     update.images = req.files.map(
       (file) => `${baseUrl}/uploads/${file.filename}`
