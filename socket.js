@@ -7,9 +7,9 @@ export function initSocket(httpServer) {
   io = new Server(httpServer, {
     cors: {
       origin: [
-    "http://localhost:3000",
-    "http://localhost:3001"
-  ],
+        process.env.NEXT_PUBLIC_FRONT_URL,
+        process.env.ADMIN_URL
+      ],
       methods: ["GET", "POST", "PATCH"],
     },
   });
