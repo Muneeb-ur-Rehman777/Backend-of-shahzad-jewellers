@@ -6,7 +6,6 @@ import { createServer } from "node:http";
 import app from "./app.js";
 import { connectDB } from "./config/db.js";
 import { initSocket } from "./socket.js";
-import Product from "./models/Product.js"; 
 
 
 // Yahan check karein ke employeeRoutes import hain ya nahi:
@@ -17,13 +16,7 @@ const PORT = process.env.PORT || 5000;
 async function startServer() {
   await connectDB();
 
-  try {
-    await Product.collection.dropIndexes();
-    console.log("Old product indexes dropped successfully");
-  } catch (err) {
-    console.log("No indexes to drop or already cleared");
-  }
-
+  
   // Agar app.js ke andar routes configured nahi hain, toh aap yahan bhi app.use laga sakte hain:
   // app.use('/api/employees', employeeRoutes);
 
